@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra dev
+      - run: uv run pytest --cov=rss_publisher --cov-report=term-missing
+      - run: uv run python scripts/smoke_core.py
+      - run: uv build
+      - name: Wheel install smoke
+        run: |
+          python -m venv /tmp/rss-publisher-wheel
+          /tmp/rss-publisher-wheel/bin/pip install dist/*.whl
+          /tmp/rss-publisher-wheel/bin/rss-publisher --help
+          /tmp/rss-publisher-wheel/bin/rss-publisher-mcp --help >/dev/null 2>&1 || true
