@@ -6,12 +6,28 @@ from typing import Any
 from mcp.server import MCPServer
 
 from .config import Settings
-from .models import FeedEntry
+from .models import BatchOperation, EntryPatch, FeedConfig, FeedEntry
 from .service import PublisherService
 from . import __version__
 
 settings = Settings.from_env()
 service = PublisherService(settings)
+
+
+def _payload(value: Any) -> Any:
+    """Normalize a typed tool argument to a plain dict.
+
+    The MCP SDK validates arguments against the annotated Pydantic model before
+    calling the tool, so real MCP calls always arrive as model instances. Direct
+    Python callers (and tests) may pass plain dicts; accept both.
+    """
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        return value.model_dump(exclude_unset=True)
+    return value
+
+
 mcp = MCPServer(
     "rss-publisher",
     title="RSS Publisher",
@@ -31,9 +47,9 @@ def get_feed() -> dict[str, Any]:
 
 
 @mcp.tool()
-def configure_feed(patch: dict[str, Any], expected_revision: int | None = None) -> dict[str, Any]:
+def configure_feed(patch: FeedConfig, expected_revision: int | None = None) -> dict[str, Any]:
     """Update feed/channel configuration."""
-    return service.configure_feed(patch, expected_revision).model_dump(mode="json")
+    return service.configure_feed(_payload(patch), expected_revision).model_dump(mode="json")
 
 
 @mcp.tool()
@@ -43,9 +59,10 @@ def list_active_entries() -> dict[str, Any]:
 
 
 @mcp.tool()
-def find_similar_active_entries(text: str | None = None, entry: dict[str, Any] | None = None, limit: int = 5) -> dict[str, Any]:
+def find_similar_active_entries(text: str | None = None, entry: FeedEntry | None = None, limit: int = 5) -> dict[str, Any]:
     """Find semantic candidates only among currently active/published entries. Similarity is candidate retrieval, not authority to merge."""
-    return service.find_similar_active_entries(text=text, entry=entry, limit=limit)
+    probe = _payload(entry)
+    return service.find_similar_active_entries(text=text, entry=probe, limit=limit)
 
 
 @mcp.tool()
@@ -55,27 +72,29 @@ def get_entry(entry_id: str) -> dict[str, Any] | None:
 
 
 @mcp.tool()
-def create_entry(entry: dict[str, Any], expected_revision: int | None = None) -> dict[str, Any]:
+def create_entry(entry: FeedEntry, expected_revision: int | None = None) -> dict[str, Any]:
     """Create a definitely-new entry. Generates a permanent urn:uuid ID if omitted."""
-    return service.create_entry(entry, expected_revision).model_dump(mode="json")
+    return service.create_entry(_payload(entry), expected_revision).model_dump(mode="json")
 
 
 @mcp.tool()
-def update_entry(entry_id: str, patch: dict[str, Any], expected_revision: int | None = None) -> dict[str, Any]:
+def update_entry(entry_id: str, patch: EntryPatch, expected_revision: int | None = None) -> dict[str, Any]:
     """Patch an active entry while preserving its immutable ID. Archived entries require republish_entry first."""
-    return service.update_entry(entry_id, patch, expected_revision).model_dump(mode="json")
+    return service.update_entry(entry_id, _payload(patch), expected_revision).model_dump(mode="json")
 
 
 @mcp.tool()
-def publish_batch(operations: list[dict[str, Any]], expected_revision: int | None = None) -> dict[str, Any]:
+def publish_batch(operations: list[BatchOperation], expected_revision: int | None = None) -> dict[str, Any]:
     """Apply multiple creates/updates in one publisher transaction and rebuild once."""
-    return service.publish_batch(operations, expected_revision)
+    payload = [_payload(op) for op in operations]
+    return service.publish_batch(payload, expected_revision)
 
 
 @mcp.tool()
-def correct_entry(entry_id: str, correction_note: str, patch: dict[str, Any] | None = None) -> dict[str, Any]:
+def correct_entry(entry_id: str, correction_note: str, patch: EntryPatch | None = None) -> dict[str, Any]:
     """Publish a visible correction while preserving entry identity."""
-    return service.correct_entry(entry_id, correction_note, patch).model_dump(mode="json")
+    data = _payload(patch)
+    return service.correct_entry(entry_id, correction_note, data).model_dump(mode="json")
 
 
 @mcp.tool()

@@ -136,5 +136,49 @@ class MutationResult(BaseModel):
     changes: list[str] = Field(default_factory=list)
 
 
+class EntryPatch(BaseModel):
+    """Partial FeedEntry used for updates.
+
+    Every field is optional so callers can patch only what changed. This exists so
+    the MCP tool schema advertises the real FeedEntry field names instead of an
+    opaque object, which previously let models invent fields such as
+    ``presentation_html`` and fail validation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    kind: EntryKind | None = None
+    continuity_key: str | None = None
+    lifecycle: Lifecycle | None = None
+    title: str | None = None
+    summary: str | None = None
+    content_text: str | None = None
+    content_html: str | None = None
+    url: str | None = None
+    published_at: datetime | None = None
+    updated_at: datetime | None = None
+    language: str | None = None
+    authors: list[Author] | None = None
+    categories: list[str] | None = None
+    links: list[Link] | None = None
+    hero_image: AssetRef | None = None
+    media: list[AssetRef] | None = None
+    primary_enclosure: Enclosure | None = None
+    origin_feed_url: str | None = None
+    origin_feed_title: str | None = None
+    public_metadata: dict[str, Any] | None = None
+    private_metadata: dict[str, Any] | None = None
+    correction_note: str | None = None
+
+
+class BatchOperation(BaseModel):
+    """One create/update/upsert operation inside publish_batch."""
+
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["create", "update", "upsert"] = "upsert"
+    id: str | None = None
+    entry: FeedEntry | None = None
+    patch: EntryPatch | None = None
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)

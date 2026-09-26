@@ -3,6 +3,34 @@
 Finishing pass for release. Deterministic core, packaging, MCP, asset API and
 rendering verified against the installed current dependencies.
 
+Last updated: 2026-09-26 (session 1, agent-appliance integration pass).
+
+## Integration pass (agent appliance) — UNCOMMITTED
+
+The `rss-publisher-agent` appliance integration exposed a real MCP defect that is
+fixed in the working tree but **not yet committed or tagged**:
+
+- **Opaque tool schemas.** `create_entry`, `update_entry`, `publish_batch`,
+  `configure_feed` and `find_similar_active_entries` annotated their payload
+  arguments as `dict[str, Any]`, so the MCP SDK advertised them as
+  `{"type": "object"}` with no properties. Models therefore invented field names
+  (e.g. `presentation_html`) and every create failed Pydantic validation with
+  `Extra inputs are not permitted`.
+- **Fix.** Added `EntryPatch` and `BatchOperation` models in `models.py` and typed
+  the tool parameters with `FeedEntry`/`EntryPatch`/`BatchOperation`/`FeedConfig`.
+  Added a `_payload()` helper so tools accept both validated model instances (real
+  MCP calls) and plain dicts (direct Python callers/tests).
+- **Verification.** `create_entry` now advertises a `$ref` to `FeedEntry` with the
+  real field names. `pytest` still passes (152 passed, 1 skipped).
+
+Files changed (uncommitted): `src/rss_publisher/models.py`,
+`src/rss_publisher/mcp_server.py`.
+
+**Action required:** commit these changes, then move the `v0.1.0` tag (currently at
+commit `03335a2` "init") to the new commit or cut `v0.1.1`, and push. The agent repo
+pins `RSS_PUBLISHER_MCP_REF=v0.1.0`; until the tag includes this fix, the pinned ref
+ships the broken opaque schemas.
+
 ## Environment
 
 - Python 3.14.7
@@ -96,10 +124,14 @@ The single skip is the W3C network integration test, which is opt-in via
 
 ## Blockers
 
-- None blocking. The only unverified-by-automation gate is a live FreshRSS
-  instance (proxy-tested) and the opt-in W3C network test (run and passed here).
+- **Uncommitted schema fix + stale tag.** See "Integration pass" above. The
+  `v0.1.0` tag predates the typed-schema fix and must be moved or superseded.
+- The only unverified-by-automation gate is a live FreshRSS instance
+  (proxy-tested) and the opt-in W3C network test (run and passed here).
 
 ## Exact next action
 
-- Optionally run the live FreshRSS integration against a real instance, then tag
-  the release.
+1. Commit the typed-schema fix (`models.py`, `mcp_server.py`).
+2. Move `v0.1.0` to the new commit (or cut `v0.1.1`) and push.
+3. Re-run `pytest` (expect 152 passed, 1 skipped).
+4. Optionally run the live FreshRSS integration against a real instance.
